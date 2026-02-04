@@ -11,6 +11,21 @@ pub mod list {
     }
 }
 
+/// Format a branch reference for display.
+/// For symbolic refs (like origin/HEAD), show as "name -> target" like git does.
+fn format_branch_ref(reference: &gix::Reference<'_>) -> String {
+    let name = reference.name().shorten().to_string();
+
+    // Check if this is a symbolic reference
+    if let Some(target_name) = reference.target().try_name() {
+        // Format like git: "origin/HEAD -> origin/main"
+        let target = target_name.shorten().to_string();
+        format!("{name} -> {target}")
+    } else {
+        name
+    }
+}
+
 pub fn list(
     repo: gix::Repository,
     out: &mut dyn std::io::Write,
@@ -29,10 +44,11 @@ pub fn list(
     };
 
     if show_local {
+        // Don't use peeled() to preserve symbolic reference information
         let mut branch_names: Vec<String> = platform
             .local_branches()?
             .flatten()
-            .map(|branch| branch.name().shorten().to_string())
+            .map(|branch| format_branch_ref(&branch))
             .collect();
 
         branch_names.sort();
@@ -43,10 +59,11 @@ pub fn list(
     }
 
     if show_remotes {
+        // Don't use peeled() to preserve symbolic reference information
         let mut branch_names: Vec<String> = platform
             .remote_branches()?
             .flatten()
-            .map(|branch| branch.name().shorten().to_string())
+            .map(|branch| format_branch_ref(&branch))
             .collect();
 
         branch_names.sort();
