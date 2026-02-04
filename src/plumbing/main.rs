@@ -303,14 +303,14 @@ pub fn main() -> Result<()> {
                 },
             ),
         },
-        Subcommands::Log(crate::plumbing::options::log::Platform { pathspec }) => prepare_and_run(
+        Subcommands::Log(crate::plumbing::options::log::Platform { pathspec, limit }) => prepare_and_run(
             "log",
             trace,
             verbose,
             progress,
             progress_keep_open,
             None,
-            move |_progress, out, _err| core::repository::log::log(repository(Mode::Lenient)?, out, pathspec),
+            move |_progress, out, _err| core::repository::log::log(repository(Mode::Lenient)?, out, pathspec, limit),
         ),
         Subcommands::Worktree(crate::plumbing::options::worktree::Platform { cmd }) => match cmd {
             crate::plumbing::options::worktree::SubCommands::List => prepare_and_run(

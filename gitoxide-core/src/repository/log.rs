@@ -1,22 +1,32 @@
 use anyhow::bail;
 use gix::bstr::{BString, ByteSlice};
 
-pub fn log(mut repo: gix::Repository, out: &mut dyn std::io::Write, path: Option<BString>) -> anyhow::Result<()> {
+pub fn log(
+    mut repo: gix::Repository,
+    out: &mut dyn std::io::Write,
+    path: Option<BString>,
+    limit: Option<usize>,
+) -> anyhow::Result<()> {
     repo.object_cache_size_if_unset(repo.compute_object_cache_size_for_tree_diffs(&**repo.index_or_empty()?));
 
     if let Some(path) = path {
         log_file(repo, out, path)
     } else {
-        log_all(repo, out)
+        log_all(repo, out, limit)
     }
 }
 
-fn log_all(repo: gix::Repository, out: &mut dyn std::io::Write) -> Result<(), anyhow::Error> {
+fn log_all(repo: gix::Repository, out: &mut dyn std::io::Write, limit: Option<usize>) -> Result<(), anyhow::Error> {
     let head = repo.head()?.peel_to_commit()?;
     let topo = gix::traverse::commit::topo::Builder::from_iters(&repo.objects, [head.id], None::<Vec<gix::ObjectId>>)
         .build()?;
 
-    for info in topo {
+    let iter: Box<dyn Iterator<Item = _>> = match limit {
+        Some(n) => Box::new(topo.take(n)),
+        None => Box::new(topo),
+    };
+
+    for info in iter {
         let info = info?;
 
         write_info(&repo, &mut *out, &info)?;

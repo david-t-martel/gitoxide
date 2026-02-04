@@ -566,6 +566,12 @@ pub mod log {
     /// List all commits in a repository, optionally limited to those that change a given path.
     #[derive(Debug, clap::Parser)]
     pub struct Platform {
+        /// Maximum number of commits to display.
+        ///
+        /// When not specified, all commits reachable from HEAD are shown.
+        #[clap(short = 'n', long)]
+        pub limit: Option<usize>,
+
         /// The git path specification to show a log for.
         #[clap(value_parser = crate::shared::AsBString)]
         pub pathspec: Option<BString>,
