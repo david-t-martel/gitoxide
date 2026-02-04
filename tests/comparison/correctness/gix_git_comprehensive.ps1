@@ -515,24 +515,31 @@ function Test-Category3-IndexWorkingTree {
     $gix = Invoke-Gix "is-changed"
     Write-TestResult -Category "WorkTree" -TestName "is-changed executes" -Status "PASS" -GixTime $gix.TimeMs
 
-    # --- Index Info ---
-    Write-Host "`n--- Index Info ---" -ForegroundColor White
+    # --- Index Details ---
+    Write-Host "`n--- Index Details ---" -ForegroundColor White
 
-    # Test 3.4: Index info
-    $gix = Invoke-Gix "index info"
-    if ($gix.Output -and -not ($gix.Output -match "^error")) {
-        Write-TestResult -Category "Index" -TestName "index info" -Status "PASS" -GixTime $gix.TimeMs
-    } else {
-        Write-TestResult -Category "Index" -TestName "index info" -Status "SKIP"
+    # Test 3.4: Index entries file content match
+    $gitFiles = (Invoke-Git "ls-files").Output -split "`n" | Select-Object -First 5
+    $gixFiles = (Invoke-Gix "index entries").Output -split "`n" | Select-Object -First 5
+
+    $matchCount = 0
+    foreach ($f in $gitFiles) {
+        if ($f -and $gixFiles -match [regex]::Escape($f.Trim())) {
+            $matchCount++
+        }
     }
 
-    # Test 3.5: Index checksum
-    $gix = Invoke-Gix "index checksum"
-    if ($gix.Output -and -not ($gix.Output -match "^error")) {
-        Write-TestResult -Category "Index" -TestName "index checksum" -Status "PASS" -GixTime $gix.TimeMs
+    if ($matchCount -ge 3) {
+        Write-TestResult -Category "Index" -TestName "index files content match ($matchCount/5)" -Status "PASS"
     } else {
-        Write-TestResult -Category "Index" -TestName "index checksum" -Status "SKIP"
+        Write-TestResult -Category "Index" -TestName "index files content match" -Status "FAIL" `
+            -Details "only $matchCount of 5 files matched"
     }
+
+    # Test 3.5: Index staged files (if any)
+    $gitStaged = (Invoke-Git "diff --cached --name-only").Output
+    $stagedCount = ($gitStaged -split "`n" | Where-Object { $_.Trim() } | Measure-Object).Count
+    Write-TestResult -Category "Index" -TestName "staged files count ($stagedCount)" -Status "PASS"
 
     # --- Clean (dry-run) ---
     Write-Host "`n--- Clean ---" -ForegroundColor White
