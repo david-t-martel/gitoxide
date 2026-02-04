@@ -202,20 +202,37 @@ zlib-rs = { opt-level = 3 }
 [profile.release]
 overflow-checks = false
 lto = "thin"
+opt-level = 3
+codegen-units = 4  # Balance compile time and optimization
 # This bloats files but assures destructors are called, important for tempfiles. One day I hope we
 # can wire up the 'abrt' signal handler so tempfiles will be removed in case of panics.
 panic = "unwind"
 incremental = false
+
+# Maximum performance profile for local development/testing.
+# Use: cargo build --profile release-optimized
+[profile.release-optimized]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"  # Maximum performance - no unwinding overhead
+strip = "symbols"
+opt-level = 3
+
+# Optimize dependencies for size to reduce startup time
+[profile.release-optimized.package."*"]
+opt-level = "z"
 
 # This profile is currently used in building releases for GitHub.
 # It may be removed at any time and should not otherwise be relied on.
 [profile.release-github]
 inherits = "release"
 overflow-checks = false
-panic = "unwind"
+panic = "unwind"  # Keep for distribution safety (tempfile cleanup)
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
+opt-level = 3
 
 [profile.bench]
 debug = 1
