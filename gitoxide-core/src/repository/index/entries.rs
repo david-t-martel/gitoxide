@@ -50,6 +50,25 @@ pub(crate) mod function {
         }: Options,
     ) -> anyhow::Result<()> {
         let mut out = BufWriter::with_capacity(64 * 1024, out);
+
+        // Fast path: simple listing with no pathspecs, no attributes, no submodules, no stats
+        // This skips expensive pathspec/attribute cache initialization
+        if simple
+            && pathspecs.is_empty()
+            && attributes.is_none()
+            && !recurse_submodules
+            && !statistics
+            && format == OutputFormat::Human
+        {
+            let index = repo.index_or_load_from_head()?;
+            for entry in index.entries() {
+                out.write_all(entry.path(&index))?;
+                out.write_all(b"\n")?;
+            }
+            out.flush()?;
+            return Ok(());
+        }
+
         let mut all_attrs = statistics.then(BTreeSet::new);
 
         #[cfg(feature = "serde")]

@@ -27,11 +27,12 @@ pub(crate) mod function {
         core::{base::Orientation, geometry::Point, style::StyleAttr},
         std_shapes::shapes::{Arrow, Element, ShapeKind},
     };
+    use std::io::{BufWriter, Write};
 
     pub fn list(
         mut repo: gix::Repository,
         mut progress: impl Progress,
-        mut out: impl std::io::Write,
+        out: impl std::io::Write,
         super::Context {
             spec,
             format,
@@ -50,6 +51,10 @@ pub(crate) mod function {
         let id = repo
             .rev_parse_single(spec)
             .context("Only single revisions are currently supported")?;
+
+        // Explicitly use commit-graph if available for faster traversal
+        let commit_graph = repo.commit_graph_if_enabled().ok().flatten();
+
         let commits = id
             .object()?
             .peel_to_kind(gix::object::Kind::Commit)
@@ -57,6 +62,7 @@ pub(crate) mod function {
             .id()
             .ancestors()
             .sorting(Sorting::ByCommitTime(Default::default()))
+            .with_commit_graph(commit_graph)
             .all()?;
 
         let mut vg = match text {
@@ -70,6 +76,9 @@ pub(crate) mod function {
         };
         progress.init(None, gix::progress::count("commits"));
         progress.set_name("traverse".into());
+
+        // Use buffered output for text mode to reduce syscalls
+        let mut out = BufWriter::with_capacity(64 * 1024, out);
 
         let start = std::time::Instant::now();
         for commit in commits {

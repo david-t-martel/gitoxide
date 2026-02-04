@@ -99,6 +99,10 @@ pub fn main() -> Result<()> {
             let to_match_settings = |mut opts: gix::open::Options| {
                 opts.permissions.config.git_binary = git_installation;
                 opts.permissions.attributes.git_binary = git_installation;
+                // Enable lazy pack discovery to minimize CLI startup time.
+                // This skips the expensive directory scan at startup and defers
+                // index discovery to the first object access.
+                opts = opts.with_lazy_pack_discovery();
                 if config.is_empty() {
                     opts
                 } else {
