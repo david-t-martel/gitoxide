@@ -1,0 +1,94 @@
+{
+  "GitWins": 7,
+  "Timestamp": "2026-02-04T01:39:27.2351082-05:00",
+  "OptimizationTargets": [
+    {
+      "Operation": "cat-tree",
+      "GitMedianMs": 30.884,
+      "Category": "ODB",
+      "GapPercent": 69.2,
+      "GixMedianMs": 100.125
+    },
+    {
+      "Operation": "commit-graph-verify",
+      "GitMedianMs": 23.493,
+      "Category": "Verify",
+      "GapPercent": 67.8,
+      "GixMedianMs": 73.052
+    },
+    {
+      "Operation": "tag-list",
+      "GitMedianMs": 24.525,
+      "Category": "Refs",
+      "GapPercent": 54.8,
+      "GixMedianMs": 54.213
+    },
+    {
+      "Operation": "branch-list",
+      "GitMedianMs": 24.564,
+      "Category": "Refs",
+      "GapPercent": 54.4,
+      "GixMedianMs": 53.89
+    },
+    {
+      "Operation": "rev-parse",
+      "GitMedianMs": 23.344,
+      "Category": "Refs",
+      "GapPercent": 54.0,
+      "GixMedianMs": 50.728
+    },
+    {
+      "Operation": "cat-commit",
+      "GitMedianMs": 30.668,
+      "Category": "ODB",
+      "GapPercent": 51.2,
+      "GixMedianMs": 62.892
+    },
+    {
+      "Operation": "blame-readme",
+      "GitMedianMs": 208.183,
+      "Category": "Blame",
+      "GapPercent": 38.9,
+      "GixMedianMs": 340.614
+    }
+  ],
+  "TotalBenchmarks": 14,
+  "GixWins": 7,
+  "Strengths": [
+    {
+      "Operation": "rev-count",
+      "Category": "Core",
+      "SpeedupFactor": 14.303
+    },
+    {
+      "Operation": "diff-50",
+      "Category": "Diff",
+      "SpeedupFactor": 12.002
+    },
+    {
+      "Operation": "status-porcelain",
+      "Category": "Core",
+      "SpeedupFactor": 3.557
+    },
+    {
+      "Operation": "diff-10",
+      "Category": "Diff",
+      "SpeedupFactor": 3.245
+    },
+    {
+      "Operation": "log-500",
+      "Category": "Core",
+      "SpeedupFactor": 3.231
+    },
+    {
+      "Operation": "index-info",
+      "Category": "Index",
+      "SpeedupFactor": 2.108
+    },
+    {
+      "Operation": "log-50",
+      "Category": "Core",
+      "SpeedupFactor": 1.788
+    }
+  ]
+}
