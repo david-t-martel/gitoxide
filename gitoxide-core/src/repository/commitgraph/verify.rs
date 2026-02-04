@@ -16,17 +16,31 @@ pub(crate) mod function {
     use anyhow::Result;
 
     pub fn verify<W1, W2>(
-        repo: gix::Repository,
+        mut repo: gix::Repository,
         Context {
             err: _err,
             mut out,
             output_statistics,
         }: Context<W1, W2>,
-    ) -> Result<gix::commitgraph::verify::Outcome>
+    ) -> Result<Option<gix::commitgraph::verify::Outcome>>
     where
         W1: io::Write,
         W2: io::Write,
     {
+        // Enable object cache for potential commit lookups during verification
+        repo.object_cache_size_if_unset(8 * 1024 * 1024); // 8MB cache
+
+        // Check if commit-graph exists before trying to open it.
+        // Git succeeds silently when there's no commit-graph to verify.
+        let info_path = repo.objects.store_ref().path().join("info");
+        let single_file = info_path.join("commit-graph");
+        let chain_file = info_path.join("commit-graphs").join("commit-graph-chain");
+
+        if !single_file.exists() && !chain_file.exists() {
+            // No commit-graph exists - succeed silently like git does
+            return Ok(None);
+        }
+
         let g = repo.commit_graph()?;
 
         #[allow(clippy::unnecessary_wraps, unknown_lints)]
@@ -43,7 +57,7 @@ pub(crate) mod function {
             _ => {}
         }
 
-        Ok(stats)
+        Ok(Some(stats))
     }
 
     fn print_human_output(out: &mut impl io::Write, stats: &gix::commitgraph::verify::Outcome) -> io::Result<()> {
