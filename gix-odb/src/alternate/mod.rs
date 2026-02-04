@@ -16,7 +16,11 @@
 //! ```
 //!
 //! Based on the [canonical implementation](https://github.com/git/git/blob/master/sha1-file.c#L598:L609).
-use std::{fs, io, path::PathBuf};
+use std::{
+    collections::HashSet,
+    fs, io,
+    path::PathBuf,
+};
 
 use gix_path::realpath::MAX_SYMLINKS;
 
@@ -45,17 +49,25 @@ pub enum Error {
 pub fn resolve(objects_directory: PathBuf, current_dir: &std::path::Path) -> Result<Vec<PathBuf>, Error> {
     let mut dirs = vec![(0, objects_directory.clone())];
     let mut out = Vec::new();
-    let mut seen = vec![gix_path::realpath_opts(&objects_directory, current_dir, MAX_SYMLINKS)?];
+    let first_path = gix_path::realpath_opts(&objects_directory, current_dir, MAX_SYMLINKS)?;
+    // Use HashSet for O(1) cycle detection instead of O(n) Vec::contains()
+    // Also keep Vec for error reporting (to show the cycle path)
+    let mut seen_set: HashSet<PathBuf> = HashSet::with_capacity(8);
+    let mut seen_order: Vec<PathBuf> = Vec::with_capacity(8);
+    seen_set.insert(first_path.clone());
+    seen_order.push(first_path);
+
     while let Some((depth, dir)) = dirs.pop() {
         match fs::read(dir.join("info").join("alternates")) {
             Ok(input) => {
                 for path in parse::content(&input)?.into_iter() {
                     let path = objects_directory.join(path);
                     let path_canonicalized = gix_path::realpath_opts(&path, current_dir, MAX_SYMLINKS)?;
-                    if seen.contains(&path_canonicalized) {
-                        return Err(Error::Cycle(seen));
+                    if !seen_set.insert(path_canonicalized.clone()) {
+                        // Path was already in the set - we have a cycle
+                        return Err(Error::Cycle(seen_order));
                     }
-                    seen.push(path_canonicalized);
+                    seen_order.push(path_canonicalized);
                     dirs.push((depth + 1, path));
                 }
             }

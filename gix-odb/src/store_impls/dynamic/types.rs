@@ -1,4 +1,5 @@
 use std::{
+    ops::Deref,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU16, AtomicU32, AtomicUsize, Ordering},
@@ -9,6 +10,51 @@ use std::{
 
 use arc_swap::ArcSwap;
 use gix_features::hash;
+
+/// A wrapper that aligns its content to a 64-byte cache line boundary.
+/// This prevents false sharing when multiple threads access different atomics
+/// that would otherwise share the same cache line.
+#[repr(align(64))]
+#[derive(Default)]
+pub(crate) struct CacheAligned<T>(pub T);
+
+impl<T> CacheAligned<T> {
+    /// Create a new cache-aligned value.
+    #[inline]
+    #[allow(dead_code)] // Available for future use
+    pub const fn new(value: T) -> Self {
+        CacheAligned(value)
+    }
+}
+
+impl<T> Deref for CacheAligned<T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CacheAligned<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<usize> for CacheAligned<AtomicUsize> {
+    #[inline]
+    fn from(value: usize) -> Self {
+        CacheAligned(AtomicUsize::new(value))
+    }
+}
+
+impl From<u16> for CacheAligned<AtomicU16> {
+    #[inline]
+    fn from(value: u16) -> Self {
+        CacheAligned(AtomicU16::new(value))
+    }
+}
 
 /// An id to refer to an index file or a multipack index file
 pub type IndexId = usize;
@@ -97,14 +143,17 @@ pub struct SlotMapIndex {
     /// The number of indices loaded thus far when the index of the slot map was last examined, which can change as new indices are loaded
     /// in parallel.
     /// Shared across SlotMapIndex instances of the same generation.
-    pub(crate) next_index_to_load: Arc<AtomicUsize>,
+    /// Cache-aligned to prevent false sharing with other atomics.
+    pub(crate) next_index_to_load: Arc<CacheAligned<AtomicUsize>>,
     /// Incremented by one up to `slot_indices.len()` once an attempt to load an index completed.
     /// If a load failed, there will also be an increment.
     /// Shared across SlotMapIndex instances of the same generation.
-    pub(crate) loaded_indices: Arc<AtomicUsize>,
+    /// Cache-aligned to prevent false sharing with other atomics.
+    pub(crate) loaded_indices: Arc<CacheAligned<AtomicUsize>>,
     /// The amount of indices that are currently being loaded.
     /// Zero if no loading operation is currently happening, or more otherwise.
-    pub(crate) num_indices_currently_being_loaded: Arc<AtomicU16>,
+    /// Cache-aligned to prevent false sharing with other atomics.
+    pub(crate) num_indices_currently_being_loaded: Arc<CacheAligned<AtomicU16>>,
 }
 
 impl SlotMapIndex {

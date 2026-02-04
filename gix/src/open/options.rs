@@ -63,6 +63,18 @@ impl Options {
         self
     }
 
+    /// Enable lazy pack discovery to minimize startup time.
+    ///
+    /// This skips the expensive directory scan at startup and defers index discovery
+    /// to the first object access. Recommended for CLI tools where startup latency matters.
+    ///
+    /// Uses 64 slots by default. For repositories with many packs, use
+    /// [`object_store_slots`](Self::object_store_slots) with [`Slots::lazy_with_minimum`](gix_odb::store::init::Slots::lazy_with_minimum) instead.
+    pub fn with_lazy_pack_discovery(mut self) -> Self {
+        self.object_store_slots = gix_odb::store::init::Slots::lazy();
+        self
+    }
+
     // TODO: tests
     /// Set the given permissions, which are typically derived by a `Trust` level.
     pub fn permissions(mut self, permissions: Permissions) -> Self {

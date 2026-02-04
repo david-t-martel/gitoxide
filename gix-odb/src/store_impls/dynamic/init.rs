@@ -48,6 +48,21 @@ pub enum Slots {
         /// The minimum number of slots to assume
         minimum: usize,
     },
+    /// Defer index discovery until first object access.
+    /// This provides the fastest startup time by skipping the expensive directory scan.
+    /// The `minimum` value specifies the number of slots to pre-allocate (should accommodate expected pack count).
+    ///
+    /// Recommended for CLI tools and applications where startup latency matters and the repository
+    /// structure may vary. The actual index discovery happens lazily on first object lookup.
+    ///
+    /// Note: If the actual number of indices exceeds `minimum`, an error will occur during consolidation.
+    /// For repositories with many packs, consider using a higher minimum (e.g., 128 or 256).
+    Lazy {
+        /// The number of slots to pre-allocate. Default is 64, which handles most repositories.
+        /// For repositories with geometric packing, 32 is typically sufficient.
+        /// For repositories with many alternates or loose packs, consider 128+.
+        minimum: usize,
+    },
 }
 
 impl Default for Slots {
@@ -56,6 +71,25 @@ impl Default for Slots {
             multiplier: 1.1,
             minimum: 32,
         }
+    }
+}
+
+impl Slots {
+    /// Create a lazy slot configuration with a reasonable default minimum.
+    /// This skips the expensive directory scan at startup, deferring index discovery
+    /// to the first object access.
+    ///
+    /// Uses 64 slots by default, which handles most repositories comfortably.
+    #[inline]
+    pub const fn lazy() -> Self {
+        Slots::Lazy { minimum: 64 }
+    }
+
+    /// Create a lazy slot configuration with a custom minimum.
+    /// Use this for repositories with known pack counts to optimize memory usage.
+    #[inline]
+    pub const fn lazy_with_minimum(minimum: usize) -> Self {
+        Slots::Lazy { minimum }
     }
 }
 
@@ -111,6 +145,12 @@ impl Store {
                 } else {
                     candidate
                 }
+            }
+            Slots::Lazy { minimum } => {
+                // Skip expensive directory scan - discovery happens lazily on first object access.
+                // The SlotMapIndex starts uninitialized, and load_one_index() will call
+                // consolidate_with_disk_state(needs_init=true) on first use.
+                minimum
             }
         };
         if slot_count > crate::store::types::PackId::max_indices() {
