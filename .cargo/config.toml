@@ -1,0 +1,36 @@
+# Gitoxide Cargo Configuration
+# For local development optimizations
+
+[build]
+# Uncomment for native CPU optimizations (local builds only, not for distribution)
+# rustflags = ["-C", "target-cpu=native"]
+
+# Use multiple codegen units for faster debug builds
+# jobs = 8  # Uncomment to limit parallel jobs
+
+[target.x86_64-pc-windows-msvc]
+# Static CRT linking for better portability
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# Uncomment for faster linking (requires lld-link.exe in PATH)
+# linker = "lld-link.exe"
+
+[target.x86_64-unknown-linux-gnu]
+# Use lld for faster linking on Linux
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[alias]
+# Build aliases for convenience
+release-fast = "build --profile release-optimized"
+release-dist = "build --profile release-github --features max-pure"
+
+# Check aliases
+check-all = "check --all-features"
+clippy-all = "clippy --all-features -- -D warnings"
+
+# Test alias with optimizations
+test-release = "test --release"
+
+[env]
+# Environment variables for builds
+# CARGO_INCREMENTAL = "0"  # Disable incremental for release builds
