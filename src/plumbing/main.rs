@@ -656,6 +656,38 @@ pub fn main() -> Result<()> {
                 },
             )
         }
+        #[cfg(feature = "gitoxide-core-blocking-client")]
+        Subcommands::Pull(crate::plumbing::options::pull::Platform {
+            dry_run,
+            handshake_info,
+            ff_only,
+            no_ff,
+            remote,
+            shallow,
+            ref_spec,
+        }) => {
+            let opts = core::repository::pull::Options {
+                format,
+                dry_run,
+                remote,
+                handshake_info,
+                shallow: shallow.into(),
+                ref_specs: ref_spec,
+                ff_only,
+                no_ff,
+            };
+            prepare_and_run(
+                "pull",
+                trace,
+                auto_verbose,
+                progress,
+                progress_keep_open,
+                core::repository::pull::PROGRESS_RANGE,
+                move |progress, out, err| {
+                    core::repository::pull(repository(Mode::LenientWithGitInstallConfig)?, progress, out, err, opts)
+                },
+            )
+        }
         Subcommands::ConfigTree => show_progress(),
         Subcommands::Credential(cmd) => core::repository::credential(
             repository(Mode::StrictWithGitInstallConfig).ok(),
@@ -1343,7 +1375,14 @@ pub fn main() -> Result<()> {
                 progress,
                 progress_keep_open,
                 None,
-                move |_progress, out, _err| core::repository::tag::list(repository(Mode::Lenient)?, out, format),
+                move |_progress, out, _err| {
+                    core::repository::tag::list(
+                        repository(Mode::Lenient)?,
+                        out,
+                        format,
+                        core::repository::tag::Options { thread_limit },
+                    )
+                },
             ),
         },
         Subcommands::Tree(cmd) => match cmd {

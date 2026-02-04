@@ -123,6 +123,9 @@ pub enum Subcommands {
     /// Clone a repository into a new directory.
     #[cfg(feature = "gitoxide-core-blocking-client")]
     Clone(clone::Platform),
+    /// Fetch from and integrate with another repository or a local branch.
+    #[cfg(feature = "gitoxide-core-blocking-client")]
+    Pull(pull::Platform),
     /// Interact with the mailmap.
     #[clap(subcommand)]
     Mailmap(mailmap::Subcommands),
@@ -613,6 +616,89 @@ pub mod fetch {
         pub shallow: ShallowOptions,
 
         /// The name of the remote to connect to, or the url of the remote to connect to directly.
+        ///
+        /// If unset, the current branch will determine the remote.
+        #[clap(long, short = 'r')]
+        pub remote: Option<String>,
+
+        /// Override the built-in and configured ref-specs with one or more of the given ones.
+        #[clap(value_parser = crate::shared::AsBString)]
+        pub ref_spec: Vec<gix::bstr::BString>,
+    }
+
+    #[derive(Debug, clap::Parser)]
+    pub struct ShallowOptions {
+        /// Fetch with the history truncated to the given number of commits as seen from the remote.
+        #[clap(long, help_heading = Some("SHALLOW"), conflicts_with_all = ["shallow_since", "shallow_exclude", "deepen", "unshallow"])]
+        pub depth: Option<NonZeroU32>,
+
+        /// Extend the current shallow boundary by the given number of commits, with 0 meaning no change.
+        #[clap(long, help_heading = Some("SHALLOW"), value_name = "DEPTH", conflicts_with_all = ["depth", "shallow_since", "shallow_exclude", "unshallow"])]
+        pub deepen: Option<u32>,
+
+        /// Cutoff all history past the given date. Can be combined with shallow-exclude.
+        #[clap(long, help_heading = Some("SHALLOW"), value_parser = crate::shared::AsTime, value_name = "DATE", conflicts_with_all = ["depth", "deepen", "unshallow"])]
+        pub shallow_since: Option<gix::date::Time>,
+
+        /// Cutoff all history past the tag-name or ref-name. Can be combined with shallow-since.
+        #[clap(long, help_heading = Some("SHALLOW"), value_parser = crate::shared::AsPartialRefName, value_name = "REF_NAME", conflicts_with_all = ["depth", "deepen", "unshallow"])]
+        pub shallow_exclude: Vec<gix::refs::PartialName>,
+
+        /// Remove the shallow boundary and fetch the entire history available on the remote.
+        #[clap(long, help_heading = Some("SHALLOW"), conflicts_with_all = ["shallow_since", "shallow_exclude", "depth", "deepen"])]
+        pub unshallow: bool,
+    }
+
+    impl From<ShallowOptions> for Shallow {
+        fn from(opts: ShallowOptions) -> Self {
+            if let Some(depth) = opts.depth {
+                Shallow::DepthAtRemote(depth)
+            } else if !opts.shallow_exclude.is_empty() {
+                Shallow::Exclude {
+                    remote_refs: opts.shallow_exclude,
+                    since_cutoff: opts.shallow_since,
+                }
+            } else if let Some(cutoff) = opts.shallow_since {
+                Shallow::Since { cutoff }
+            } else if let Some(depth) = opts.deepen {
+                Shallow::Deepen(depth)
+            } else if opts.unshallow {
+                Shallow::undo()
+            } else {
+                Shallow::default()
+            }
+        }
+    }
+}
+
+#[cfg(feature = "gitoxide-core-blocking-client")]
+pub mod pull {
+    use std::num::NonZeroU32;
+
+    use gix::remote::fetch::Shallow;
+
+    #[derive(Debug, clap::Parser)]
+    pub struct Platform {
+        /// Don't change the local repository, but otherwise try to be as accurate as possible.
+        #[clap(long, short = 'n')]
+        pub dry_run: bool,
+
+        /// Output additional information provided by the server as part of the connection handshake.
+        #[clap(long, short = 'H')]
+        pub handshake_info: bool,
+
+        /// Only allow fast-forward merges. Fail if the merge requires a merge commit.
+        #[clap(long, conflicts_with = "no_ff")]
+        pub ff_only: bool,
+
+        /// Always create a merge commit, even when fast-forward is possible.
+        #[clap(long, conflicts_with = "ff_only")]
+        pub no_ff: bool,
+
+        #[clap(flatten)]
+        pub shallow: ShallowOptions,
+
+        /// The name of the remote to pull from, or the url of the remote to connect to directly.
         ///
         /// If unset, the current branch will determine the remote.
         #[clap(long, short = 'r')]
