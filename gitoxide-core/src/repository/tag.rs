@@ -1,4 +1,5 @@
 use gix::bstr::{BStr, BString, ByteSlice};
+use gix::prelude::{Find, ObjectIdExt};
 
 use crate::OutputFormat;
 
@@ -43,44 +44,59 @@ impl Version {
     }
 }
 
-pub fn list(repo: gix::Repository, out: &mut dyn std::io::Write, format: OutputFormat) -> anyhow::Result<()> {
+/// Options for tag listing operations
+pub struct Options {
+    /// Thread limit for parallel operations. `None` uses all available threads.
+    pub thread_limit: Option<usize>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self { thread_limit: None }
+    }
+}
+
+pub fn list(
+    mut repo: gix::Repository,
+    out: &mut dyn std::io::Write,
+    format: OutputFormat,
+    options: Options,
+) -> anyhow::Result<()> {
     if format != OutputFormat::Human {
         anyhow::bail!("JSON output isn't supported");
     }
 
+    // Enable object cache to accelerate tag peeling operations
+    repo.object_cache_size_if_unset(4 * 1024 * 1024); // 4MB cache
+
     let platform = repo.references()?;
 
-    let mut tags: Vec<_> = platform
+    // Phase 1: Collect reference data (sequential, cheap)
+    // Using peeled() leverages the cached packed buffer for efficient iteration
+    let tag_refs: Vec<_> = platform
         .tags()?
+        .peeled()?
         .flatten()
-        .map(|mut reference| {
-            let tag = reference.peel_to_tag();
-            let tag_ref = tag.as_ref().map(gix::Tag::decode);
-
-            // `name` is the name of the file in `refs/tags/`.
-            // This applies to both lightweight and annotated tags.
-            let name = reference.name().shorten();
-            let mut fields = Vec::new();
-            let version = Version::parse(name);
-            match tag_ref {
-                Ok(Ok(tag_ref)) => {
-                    // `tag_name` is the name provided by the user via `git tag -a/-s/-u`.
-                    // It is only present for annotated tags.
-                    fields.push(format!(
-                        "tag name: {}",
-                        if name == tag_ref.name { "*".into() } else { tag_ref.name }
-                    ));
-                    if tag_ref.pgp_signature.is_some() {
-                        fields.push("signed".into());
-                    }
-
-                    (version, format!("{name} [{fields}]", fields = fields.join(", ")))
-                }
-                _ => (version, name.to_string()),
-            }
+        .filter_map(|reference| {
+            // Only process direct references (not symbolic)
+            reference.try_id().map(|id| {
+                let name = reference.name().shorten().to_owned();
+                (name, id.detach())
+            })
         })
         .collect();
 
+    let num_tags = tag_refs.len();
+
+    // Phase 2: Process tags - use parallel processing for large tag sets
+    let tags = if num_tags > 100 && gix::parallel::num_threads(options.thread_limit) > 1 {
+        process_tags_parallel(&repo, tag_refs, options.thread_limit)?
+    } else {
+        process_tags_sequential(&repo, tag_refs)?
+    };
+
+    // Phase 3: Sort and output
+    let mut tags = tags;
     tags.sort_by(|a, b| a.0.cmp(&b.0));
 
     for (_, tag) in tags {
@@ -88,6 +104,135 @@ pub fn list(repo: gix::Repository, out: &mut dyn std::io::Write, format: OutputF
     }
 
     Ok(())
+}
+
+/// Process tags sequentially (for small tag sets)
+fn process_tags_sequential(
+    repo: &gix::Repository,
+    tag_refs: Vec<(BString, gix::ObjectId)>,
+) -> anyhow::Result<Vec<(Version, String)>> {
+    let mut tags = Vec::with_capacity(tag_refs.len());
+
+    for (name, id) in tag_refs {
+        let display = format_tag_entry(repo, name.as_ref(), id)?;
+        let version = Version::parse(name.as_ref());
+        tags.push((version, display));
+    }
+
+    Ok(tags)
+}
+
+/// Process tags in parallel (for large tag sets)
+fn process_tags_parallel(
+    repo: &gix::Repository,
+    tag_refs: Vec<(BString, gix::ObjectId)>,
+    thread_limit: Option<usize>,
+) -> anyhow::Result<Vec<(Version, String)>> {
+    use gix::parallel::{in_parallel, Reduce};
+
+    struct TagReducer {
+        tags: Vec<(Version, String)>,
+    }
+
+    impl Reduce for TagReducer {
+        type Input = Vec<(Version, String)>;
+        type FeedProduce = ();
+        type Output = Vec<(Version, String)>;
+        type Error = anyhow::Error;
+
+        fn feed(&mut self, items: Self::Input) -> Result<Self::FeedProduce, Self::Error> {
+            self.tags.extend(items);
+            Ok(())
+        }
+
+        fn finalize(self) -> Result<Self::Output, Self::Error> {
+            Ok(self.tags)
+        }
+    }
+
+    // Process in chunks for better cache locality
+    let chunk_size = (tag_refs.len() / gix::parallel::num_threads(thread_limit)).max(10);
+    let chunks: Vec<Vec<_>> = tag_refs.chunks(chunk_size).map(|c| c.to_vec()).collect();
+
+    let tags = in_parallel(
+        chunks.into_iter(),
+        thread_limit,
+        {
+            let objects = repo.objects.clone();
+            move |_| objects.clone().into_inner()
+        },
+        |chunk, odb| {
+            let mut results = Vec::with_capacity(chunk.len());
+            for (name, id) in chunk {
+                let display = format_tag_entry_with_odb(odb, name.as_ref(), id);
+                let version = Version::parse(name.as_ref());
+                results.push((version, display));
+            }
+            results
+        },
+        TagReducer {
+            tags: Vec::with_capacity(tag_refs.len()),
+        },
+    )?;
+
+    Ok(tags)
+}
+
+/// Format a single tag entry for display
+fn format_tag_entry(repo: &gix::Repository, name: &BStr, id: gix::ObjectId) -> anyhow::Result<String> {
+    // Try to decode as annotated tag
+    if let Ok(tag_obj) = id.attach(repo).object() {
+        if tag_obj.kind == gix::object::Kind::Tag {
+            if let Ok(tag) = tag_obj.try_into_tag() {
+                if let Ok(tag_data) = tag.decode() {
+                    let mut fields = Vec::new();
+                    fields.push(format!(
+                        "tag name: {}",
+                        if name == tag_data.name {
+                            "*".into()
+                        } else {
+                            tag_data.name
+                        }
+                    ));
+                    if tag_data.pgp_signature.is_some() {
+                        fields.push("signed".into());
+                    }
+                    return Ok(format!("{name} [{fields}]", fields = fields.join(", ")));
+                }
+            }
+        }
+    }
+
+    // Lightweight tag or failed to decode
+    Ok(name.to_string())
+}
+
+/// Format a tag entry using a raw object database handle (for parallel processing)
+fn format_tag_entry_with_odb<T: Find>(odb: &T, name: &BStr, id: gix::ObjectId) -> String {
+    let mut buf = Vec::new();
+    // Try to decode as annotated tag
+    if let Ok(Some(obj)) = odb.try_find(&id, &mut buf) {
+        if obj.kind == gix::object::Kind::Tag {
+            if let Ok(tag_data) = gix::objs::TagRef::from_bytes(obj.data) {
+                let mut fields = Vec::new();
+                fields.push(format!(
+                    "tag name: {}",
+                    if name == tag_data.name {
+                        "*".into()
+                    } else {
+                        tag_data.name
+                    }
+                ));
+                if tag_data.pgp_signature.is_some() {
+                    fields.push("signed".into());
+                }
+                return format!("{name} [{fields}]", fields = fields.join(", "));
+            }
+        }
+    }
+
+    // Lightweight tag or failed to decode
+    name.to_string()
 }
 
 #[cfg(test)]
