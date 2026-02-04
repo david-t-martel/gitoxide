@@ -1,0 +1,197 @@
+name: correctness
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'gix-**'
+      - 'gix/**'
+      - 'tests/comparison/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'gix-**'
+      - 'gix/**'
+      - 'tests/comparison/**'
+  workflow_dispatch:  # Allow manual triggers
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 6 AM UTC
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CLICOLOR: '1'
+
+jobs:
+  correctness-tests:
+    name: gix vs git correctness
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive testing
+          persist-credentials: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-correctness-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-correctness-
+
+      - name: Build gix (release)
+        run: cargo build --release -p gix
+
+      - name: Install git (ensure latest)
+        run: |
+          git --version
+
+      - name: Run comprehensive correctness tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $env:GIX_PATH = "${{ github.workspace }}\target\release\gix.exe"
+
+          Write-Host "Running comprehensive gix vs git correctness tests..."
+          . .\tests\comparison\correctness\gix_git_comprehensive.ps1 `
+            -Repository "${{ github.workspace }}" `
+            -GixPath $env:GIX_PATH
+
+      - name: Run deep validation tests
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $env:GIX_PATH = "${{ github.workspace }}\target\release\gix.exe"
+
+          Write-Host "Running deep validation tests..."
+          . .\tests\comparison\correctness\deep_validation.ps1 `
+            -Repository "${{ github.workspace }}" `
+            -GixPath $env:GIX_PATH `
+            -SampleSize 50
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: correctness-test-results
+          path: tests/comparison/results/*.json
+          retention-days: 30
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request' && (success() || failure())
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Find latest result file
+            const resultsDir = 'tests/comparison/results';
+            let resultFiles = [];
+            try {
+              resultFiles = fs.readdirSync(resultsDir)
+                .filter(f => f.endsWith('.json'))
+                .sort()
+                .reverse();
+            } catch (e) {
+              console.log('No results directory found');
+              return;
+            }
+
+            if (resultFiles.length === 0) {
+              console.log('No result files found');
+              return;
+            }
+
+            const latestFile = path.join(resultsDir, resultFiles[0]);
+            const results = JSON.parse(fs.readFileSync(latestFile, 'utf8'));
+
+            const passed = results.Summary?.Pass || 0;
+            const failed = results.Summary?.Fail || 0;
+            const skipped = results.Summary?.Skip || 0;
+            const passRate = results.Summary?.PassRate || 0;
+
+            const emoji = passRate >= 100 ? '✅' : passRate >= 90 ? '⚠️' : '❌';
+
+            const body = `## ${emoji} Correctness Test Results
+
+            | Metric | Value |
+            |--------|-------|
+            | Passed | ${passed} |
+            | Failed | ${failed} |
+            | Skipped | ${skipped} |
+            | **Pass Rate** | **${passRate}%** |
+
+            <details>
+            <summary>View full test breakdown</summary>
+
+            \`\`\`json
+            ${JSON.stringify(results.Tests?.slice(0, 20), null, 2)}
+            \`\`\`
+            </details>
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  regression-detection:
+    name: Performance regression check
+    runs-on: windows-latest
+    needs: correctness-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-perf-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build gix (release)
+        run: cargo build --release -p gix
+
+      - name: Run benchmark tests
+        shell: pwsh
+        run: |
+          $env:GIX_PATH = "${{ github.workspace }}\target\release\gix.exe"
+
+          Write-Host "Running benchmark comparison..."
+          . .\tests\comparison\correctness\gix_git_comprehensive.ps1 `
+            -Repository "${{ github.workspace }}" `
+            -GixPath $env:GIX_PATH `
+            -BenchmarkMode
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: tests/comparison/results/*.json
+          retention-days: 90
