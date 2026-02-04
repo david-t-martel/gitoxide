@@ -44,7 +44,7 @@ pub struct Options {
 }
 
 pub fn show(
-    repo: gix::Repository,
+    mut repo: gix::Repository,
     pathspecs: Vec<BString>,
     mut out: impl std::io::Write,
     mut err: impl std::io::Write,
@@ -66,6 +66,9 @@ pub fn show(
     if !matches!(format, Format::Simplified) {
         bail!("Only the simplified format is currently implemented");
     }
+
+    // Enable object cache for tree diff operations during status
+    repo.object_cache_size_if_unset(8 * 1024 * 1024); // 8MB cache
 
     let start = std::time::Instant::now();
     let prefix = repo.prefix()?.unwrap_or(Path::new(""));

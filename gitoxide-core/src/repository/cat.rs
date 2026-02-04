@@ -54,7 +54,9 @@ pub fn display_object(
 pub(super) mod function {
     use crate::repository::revision::resolve::TreeMode;
 
-    pub fn cat(repo: gix::Repository, revspec: &str, out: impl std::io::Write) -> anyhow::Result<()> {
+    pub fn cat(mut repo: gix::Repository, revspec: &str, out: impl std::io::Write) -> anyhow::Result<()> {
+        // Enable object cache to accelerate tree traversal and object lookups
+        repo.object_cache_size_if_unset(4 * 1024 * 1024); // 4MB cache
         super::display_object(&repo, repo.rev_parse(revspec)?, TreeMode::Pretty, None, out)?;
         Ok(())
     }

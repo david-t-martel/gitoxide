@@ -28,15 +28,26 @@ pub fn estimate_path_storage_requirements_in_bytes(
         2 + // flag, ignore extended flag as we'd rather overallocate a bit
         object_hash.len_in_bytes()
     }
-    match version {
+    // Average padding per entry is ~4 bytes (entries are 8-byte aligned in V2/V3)
+    const AVERAGE_PADDING_PER_ENTRY: usize = 4;
+    // Safety margin to reduce Vec reallocations (10% extra capacity)
+    const SAFETY_MARGIN_PERCENT: usize = 10;
+
+    let base_estimate = match version {
         Version::V3 | Version::V2 => {
             let size_of_entries_block = offset_to_extensions.unwrap_or(on_disk_size);
+            // Subtract fixed entry overhead AND estimated padding to get path bytes
+            let padding_estimate = num_entries as usize * AVERAGE_PADDING_PER_ENTRY;
             size_of_entries_block
                 .saturating_sub(num_entries as usize * on_disk_entry_sans_path(object_hash))
+                .saturating_sub(padding_estimate)
                 .saturating_sub(header::SIZE)
         }
         Version::V4 => num_entries as usize * AVERAGE_V4_DELTA_PATH_LEN_IN_BYTES,
-    }
+    };
+
+    // Add safety margin to reduce costly Vec reallocations
+    base_estimate + (base_estimate * SAFETY_MARGIN_PERCENT / 100)
 }
 
 /// Note that `data` must point to the beginning of the entries, right past the header.
