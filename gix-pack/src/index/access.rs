@@ -127,6 +127,39 @@ impl index::File {
         lookup(id.as_ref(), &self.fan, &|idx| self.oid_at_index(idx))
     }
 
+    /// Lookup multiple object ids at once and return their entry indices.
+    ///
+    /// This is more efficient than calling [`lookup()`][Self::lookup()] repeatedly when
+    /// looking up many objects, as it enables batch processing optimizations.
+    ///
+    /// Returns a vector with the same length as `ids`, where each element is `Some(entry_index)`
+    /// if the corresponding id was found, or `None` if not found.
+    ///
+    /// # Performance
+    ///
+    /// For large batches, consider sorting `ids` by their first byte to improve cache locality,
+    /// as objects with the same first byte will be in the same fan-out bucket.
+    #[inline]
+    pub fn lookup_batch(&self, ids: &[&gix_hash::oid]) -> Vec<Option<EntryIndex>> {
+        ids.iter()
+            .map(|id| lookup(id, &self.fan, &|idx| self.oid_at_index(idx)))
+            .collect()
+    }
+
+    /// Check if multiple object ids exist in this index.
+    ///
+    /// This is more efficient than calling [`lookup()`][Self::lookup()] repeatedly
+    /// when only existence checking is needed (no entry index required).
+    ///
+    /// Returns a vector with the same length as `ids`, where each element is `true`
+    /// if the corresponding id exists in the index.
+    #[inline]
+    pub fn contains_batch(&self, ids: &[&gix_hash::oid]) -> Vec<bool> {
+        ids.iter()
+            .map(|id| lookup(id, &self.fan, &|idx| self.oid_at_index(idx)).is_some())
+            .collect()
+    }
+
     /// Given a `prefix`, find an object that matches it uniquely within this index and return `Some(Ok(entry_index))`.
     /// If there is more than one object matching the object `Some(Err(())` is returned.
     ///
@@ -270,6 +303,10 @@ pub(crate) fn lookup_prefix<'a>(
     None
 }
 
+/// Threshold below which we use linear scan instead of binary search.
+/// For small ranges, linear scan has better cache behavior and avoids branch misprediction.
+const LINEAR_SCAN_THRESHOLD: u32 = 8;
+
 pub(crate) fn lookup<'a>(
     id: &gix_hash::oid,
     fan: &[u32; FAN_LEN],
@@ -279,7 +316,8 @@ pub(crate) fn lookup<'a>(
     let mut upper_bound = fan[first_byte];
     let mut lower_bound = if first_byte != 0 { fan[first_byte - 1] } else { 0 };
 
-    while lower_bound < upper_bound {
+    // Binary search until range is small enough for linear scan
+    while upper_bound - lower_bound > LINEAR_SCAN_THRESHOLD {
         let mid = (lower_bound + upper_bound) / 2;
         let mid_sha = oid_at_index(mid);
 
@@ -288,6 +326,17 @@ pub(crate) fn lookup<'a>(
             Less => upper_bound = mid,
             Equal => return Some(mid),
             Greater => lower_bound = mid + 1,
+        }
+    }
+
+    // Linear scan for small ranges - better cache utilization and branch prediction
+    for idx in lower_bound..upper_bound {
+        let candidate = oid_at_index(idx);
+        use std::cmp::Ordering::*;
+        match id.cmp(candidate) {
+            Equal => return Some(idx),
+            Less => return None, // Already past where it would be
+            Greater => continue,
         }
     }
     None

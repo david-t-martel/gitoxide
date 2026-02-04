@@ -50,9 +50,17 @@ pub mod verify;
 mod mmap {
     use std::path::Path;
 
+    /// Memory-map a pack file for read-only access.
+    ///
+    /// Uses `map_copy_read_only()` which creates a private read-only mapping (MAP_PRIVATE).
+    /// This prevents any writes but does create private page table entries.
+    ///
+    /// Note: For multi-process scenarios, consider MAP_SHARED for better page sharing,
+    /// but this would require careful safety analysis.
     pub fn read_only(path: &Path) -> std::io::Result<memmap2::Mmap> {
         let file = std::fs::File::open(path)?;
-        // SAFETY: we have to take the risk of somebody changing the file underneath. Git never writes into the same file.
+        // SAFETY: we have to take the risk of somebody changing the file underneath.
+        // Git never writes into the same file, it only creates new pack files.
         #[allow(unsafe_code)]
         unsafe {
             memmap2::MmapOptions::new().map_copy_read_only(&file)

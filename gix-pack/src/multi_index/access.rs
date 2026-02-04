@@ -101,6 +101,39 @@ impl File {
         crate::index::access::lookup(id.as_ref(), &self.fan, &|idx| self.oid_at_index(idx))
     }
 
+    /// Lookup multiple object ids at once and return their entry indices.
+    ///
+    /// This is more efficient than calling [`lookup()`][Self::lookup()] repeatedly when
+    /// looking up many objects, as it enables batch processing optimizations.
+    ///
+    /// Returns a vector with the same length as `ids`, where each element is `Some(entry_index)`
+    /// if the corresponding id was found, or `None` if not found.
+    ///
+    /// # Performance
+    ///
+    /// For large batches, consider sorting `ids` by their first byte to improve cache locality,
+    /// as objects with the same first byte will be in the same fan-out bucket.
+    #[inline]
+    pub fn lookup_batch(&self, ids: &[&gix_hash::oid]) -> Vec<Option<EntryIndex>> {
+        ids.iter()
+            .map(|id| crate::index::access::lookup(id, &self.fan, &|idx| self.oid_at_index(idx)))
+            .collect()
+    }
+
+    /// Check if multiple object ids exist in this index.
+    ///
+    /// This is more efficient than calling [`lookup()`][Self::lookup()] repeatedly
+    /// when only existence checking is needed (no entry index required).
+    ///
+    /// Returns a vector with the same length as `ids`, where each element is `true`
+    /// if the corresponding id exists in the index.
+    #[inline]
+    pub fn contains_batch(&self, ids: &[&gix_hash::oid]) -> Vec<bool> {
+        ids.iter()
+            .map(|id| crate::index::access::lookup(id, &self.fan, &|idx| self.oid_at_index(idx)).is_some())
+            .collect()
+    }
+
     /// Given the `index` ranging from 0 to [File::num_objects()], return the pack index and its absolute offset into the pack.
     ///
     /// The pack-index refers to an entry in the [`index_names`][File::index_names()] list, from which the pack can be derived.
