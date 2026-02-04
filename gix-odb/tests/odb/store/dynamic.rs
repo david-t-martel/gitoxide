@@ -1003,3 +1003,94 @@ mod verify {
         );
     }
 }
+
+#[test]
+fn lazy_slots_defers_pack_discovery() -> crate::Result {
+    use gix_object::FindExt;
+    use std::rc::Rc;
+
+    let objects_dir = gix_testtools::fixture_path_standalone("objects");
+
+    // Test with Slots::Lazy - this should NOT scan the directory at startup
+    let store = Rc::new(gix_odb::Store::at_opts(
+        objects_dir.clone(),
+        &mut std::iter::empty(),
+        gix_odb::store::init::Options {
+            slots: gix_odb::store::init::Slots::lazy(),
+            object_hash: gix_hash::Kind::Sha1,
+            use_multi_pack_index: true,
+            current_dir: None,
+        },
+    )?);
+    let handle = store.to_handle();
+
+    // Verify store starts completely uninitialized
+    assert_eq!(
+        handle.store_ref().metrics(),
+        gix_odb::store::Metrics {
+            num_handles: 1,
+            num_refreshes: 0,
+            open_reachable_indices: 0,
+            known_reachable_indices: 0,
+            open_reachable_packs: 0,
+            known_packs: 0,
+            unused_slots: 64, // Slots::lazy() uses 64 slots
+            loose_dbs: 0,
+            unreachable_indices: 0,
+            unreachable_packs: 0
+        },
+        "lazy slots should not trigger any discovery at startup"
+    );
+
+    // Now access an object - this should trigger lazy discovery
+    let mut buf = Vec::new();
+    let oid = hex_to_id("501b297447a8255d3533c6858bb692575cdefaa0");
+    let obj = handle.find(&oid, &mut buf)?;
+    // The object exists and has a valid kind (could be any type depending on the fixture)
+    assert!(matches!(
+        obj.kind,
+        gix_object::Kind::Blob | gix_object::Kind::Tree | gix_object::Kind::Commit | gix_object::Kind::Tag
+    ));
+
+    // After first access, packs should be discovered
+    let metrics = handle.store_ref().metrics();
+    assert!(
+        metrics.num_refreshes >= 1,
+        "discovery should have been triggered by object access"
+    );
+    assert!(
+        metrics.known_reachable_indices > 0 || metrics.open_reachable_indices > 0,
+        "indices should be discovered after first object access"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn lazy_slots_with_custom_minimum() -> crate::Result {
+    use std::rc::Rc;
+
+    let objects_dir = gix_testtools::fixture_path_standalone("objects");
+
+    // Test with custom minimum slots
+    let store = Rc::new(gix_odb::Store::at_opts(
+        objects_dir,
+        &mut std::iter::empty(),
+        gix_odb::store::init::Options {
+            slots: gix_odb::store::init::Slots::lazy_with_minimum(128),
+            object_hash: gix_hash::Kind::Sha1,
+            use_multi_pack_index: true,
+            current_dir: None,
+        },
+    )?);
+    let handle = store.to_handle();
+
+    // Verify custom slot count is used
+    assert_eq!(
+        handle.store_ref().metrics().unused_slots,
+        128,
+        "custom minimum should be respected"
+    );
+
+    Ok(())
+}
