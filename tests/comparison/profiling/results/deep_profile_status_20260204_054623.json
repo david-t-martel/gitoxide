@@ -1,0 +1,170 @@
+{
+  "Operation": "status",
+  "Description": "Repository status check",
+  "Category": "Working Tree",
+  "Timestamp": "2026-02-04T05:46:23.2438206-05:00",
+  "Repository": "C:\\codedev\\gitoxide",
+  "Iterations": 5,
+  "WarmupRuns": 1,
+  "Git": {
+    "WallTime": {
+      "Count": 5,
+      "Mean": 614.76,
+      "StdDev": 47.8,
+      "Min": 555.94,
+      "Max": 674.1,
+      "Median": 605.54,
+      "P95": 674.1,
+      "P99": 674.1,
+      "CoeffOfVariation": 7.8
+    },
+    "UserTime": {
+      "Count": 5,
+      "Mean": 71.88,
+      "StdDev": 32.17,
+      "Min": 31.25,
+      "Max": 125.0,
+      "Median": 78.12,
+      "P95": 125.0,
+      "P99": 125.0,
+      "CoeffOfVariation": 44.8
+    },
+    "KernelTime": {
+      "Count": 5,
+      "Mean": 62.5,
+      "StdDev": 38.27,
+      "Min": 15.62,
+      "Max": 125.0,
+      "Median": 62.5,
+      "P95": 125.0,
+      "P99": 125.0,
+      "CoeffOfVariation": 61.2
+    },
+    "PeakMemoryMB": {
+      "Count": 5,
+      "Mean": 11.36,
+      "StdDev": 0.49,
+      "Min": 10.73,
+      "Max": 12.23,
+      "Median": 11.26,
+      "P95": 12.23,
+      "P99": 12.23,
+      "CoeffOfVariation": 4.3
+    },
+    "Threads": {
+      "Count": 5,
+      "Mean": 7.6,
+      "StdDev": 0.49,
+      "Min": 7.0,
+      "Max": 8.0,
+      "Median": 8.0,
+      "P95": 8.0,
+      "P99": 8.0,
+      "CoeffOfVariation": 6.4
+    },
+    "Handles": {
+      "Count": 5,
+      "Mean": 126.6,
+      "StdDev": 1.74,
+      "Min": 124.0,
+      "Max": 129.0,
+      "Median": 126.0,
+      "P95": 129.0,
+      "P99": 129.0,
+      "CoeffOfVariation": 1.4
+    },
+    "IOReadKB": null,
+    "IOWriteKB": null,
+    "IOReadOps": null,
+    "IOWriteOps": null,
+    "PageFaults": null
+  },
+  "Gix": {
+    "WallTime": {
+      "Count": 5,
+      "Mean": 602.38,
+      "StdDev": 26.67,
+      "Min": 558.68,
+      "Max": 631.89,
+      "Median": 605.24,
+      "P95": 631.89,
+      "P99": 631.89,
+      "CoeffOfVariation": 4.4
+    },
+    "UserTime": {
+      "Count": 5,
+      "Mean": 12.5,
+      "StdDev": 11.69,
+      "Min": 0.0,
+      "Max": 31.25,
+      "Median": 15.62,
+      "P95": 31.25,
+      "P99": 31.25,
+      "CoeffOfVariation": 93.5
+    },
+    "KernelTime": {
+      "Count": 5,
+      "Mean": 15.62,
+      "StdDev": 9.88,
+      "Min": 0.0,
+      "Max": 31.25,
+      "Median": 15.62,
+      "P95": 31.25,
+      "P99": 31.25,
+      "CoeffOfVariation": 63.2
+    },
+    "PeakMemoryMB": {
+      "Count": 5,
+      "Mean": 2.87,
+      "StdDev": 0.37,
+      "Min": 2.61,
+      "Max": 3.56,
+      "Median": 2.61,
+      "P95": 3.56,
+      "P99": 3.56,
+      "CoeffOfVariation": 12.9
+    },
+    "Threads": {
+      "Count": 5,
+      "Mean": 1.6,
+      "StdDev": 1.2,
+      "Min": 1.0,
+      "Max": 4.0,
+      "Median": 1.0,
+      "P95": 4.0,
+      "P99": 4.0,
+      "CoeffOfVariation": 75.0
+    },
+    "Handles": {
+      "Count": 5,
+      "Mean": 53.0,
+      "StdDev": 7.51,
+      "Min": 47.0,
+      "Max": 66.0,
+      "Median": 48.0,
+      "P95": 66.0,
+      "P99": 66.0,
+      "CoeffOfVariation": 14.2
+    },
+    "IOReadKB": null,
+    "IOWriteKB": null,
+    "IOReadOps": null,
+    "IOWriteOps": null,
+    "PageFaults": null
+  },
+  "Comparison": {
+    "SpeedRatio": 1.02,
+    "MemoryRatio": 0.25,
+    "Winner": "GIX",
+    "IOReadRatio": null,
+    "PageFaultRatio": null
+  },
+  "BottleneckIndicators": {
+    "HighVariance": false,
+    "LowCpuEfficiency": true,
+    "StartupOverhead": false,
+    "HighMemoryUsage": false,
+    "HighKernelRatio": false,
+    "InefficientIO": false
+  }
+}
